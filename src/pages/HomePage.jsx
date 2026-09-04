@@ -11,12 +11,29 @@ export default function HomePage() {
   const [events, setEvents] = useState([]);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("Alle");
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
     async function getEvents() {
-      const response = await fetch(`${SUPABASE_URL}/events?select=*,venue:venues(*)&order=date.asc`, { headers });
-      const data = await response.json();
-      setEvents(data);
+      try {
+        const response = await fetch(`${SUPABASE_URL}/events?select=*,venue:venues(*)&order=date.asc`, {
+          headers
+        });
+
+        // fetch only rejects on network errors, so a 4xx or 5xx has to be checked by hand.
+        if (!response.ok) {
+          throw new Error(`Could not load events, status ${response.status}`);
+        }
+
+        const data = await response.json();
+        setEvents(data);
+      } catch (error) {
+        console.error("Could not load events", error);
+        setHasError(true);
+      } finally {
+        setIsLoading(false);
+      }
     }
 
     getEvents();
@@ -43,6 +60,68 @@ export default function HomePage() {
     return formattedDate.charAt(0).toUpperCase() + formattedDate.slice(1);
   }
 
+  function renderEvents() {
+    if (isLoading) {
+      return <p role="status">Henter events ...</p>;
+    }
+
+    if (hasError) {
+      return <p role="alert">Vi kunne ikke hente events lige nu. Prøv at genindlæse siden.</p>;
+    }
+
+    if (events.length === 0) {
+      return <p>Der er ingen events i kalenderen lige nu. Kig forbi igen senere.</p>;
+    }
+
+    return (
+      <>
+        <section className="filters">
+          <label>
+            Søg
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Søg efter titel eller sted"
+            />
+          </label>
+          <label>
+            Kategori
+            <select value={category} onChange={(event) => setCategory(event.target.value)}>
+              {categories.map((item) => (
+                <option key={item}>{item}</option>
+              ))}
+            </select>
+          </label>
+        </section>
+
+        {filteredEvents.length === 0 ? (
+          <p>Ingen events matcher din søgning. Prøv et andet søgeord, eller vælg kategorien Alle.</p>
+        ) : (
+          <section className="event-grid">
+            {filteredEvents.map((event) => (
+              <article className="event-card" key={event.id}>
+                <img src={event.image} alt={event.title} />
+                <div className="event-card-content">
+                  <p className="event-category">{event.category}</p>
+                  <h3>{event.title}</h3>
+                  <p>{event.summary}</p>
+                  <div className="event-meta">
+                    <span>{formatEventDate(event.date)}</span>
+                    <span>{event.venue?.name}</span>
+                  </div>
+                  <Link className="card-link" to={`/events/${event.id}`}>
+                    Læs mere
+                  </Link>
+                </div>
+              </article>
+            ))}
+          </section>
+        )}
+      </>
+    );
+  }
+
   return (
     <>
       <header className="hero">
@@ -65,45 +144,7 @@ export default function HomePage() {
           <p>Kuraterede oplevelser i byen – fra små scener til store idéer.</p>
         </section>
 
-        <section className="filters">
-          <label>
-            Søg
-            <input
-              type="search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Søg efter titel eller sted"
-            />
-          </label>
-          <label>
-            Kategori
-            <select value={category} onChange={(event) => setCategory(event.target.value)}>
-              {categories.map((item) => (
-                <option key={item}>{item}</option>
-              ))}
-            </select>
-          </label>
-        </section>
-
-        <section className="event-grid">
-          {filteredEvents.map((event) => (
-            <article className="event-card" key={event.id}>
-              <img src={event.image} alt={event.title} />
-              <div className="event-card-content">
-                <p className="event-category">{event.category}</p>
-                <h3>{event.title}</h3>
-                <p>{event.summary}</p>
-                <div className="event-meta">
-                  <span>{formatEventDate(event.date)}</span>
-                  <span>{event.venue?.name}</span>
-                </div>
-                <Link className="card-link" to={`/events/${event.id}`}>
-                  Læs mere
-                </Link>
-              </div>
-            </article>
-          ))}
-        </section>
+        {renderEvents()}
       </main>
       <footer className="site-footer">
         <div className="footer-top">

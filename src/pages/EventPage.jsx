@@ -15,12 +15,31 @@ export default function EventPage() {
   const [email, setEmail] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formMessage, setFormMessage] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
     async function getEvent() {
-      const response = await fetch(`${SUPABASE_URL}/events?select=*,venue:venues(*)&id=eq.${eventId}`, { headers });
-      const data = await response.json();
-      setEvent(data[0]);
+      try {
+        const response = await fetch(`${SUPABASE_URL}/events?select=*,venue:venues(*)&id=eq.${eventId}`, {
+          headers
+        });
+
+        // fetch only rejects on network errors, so a 4xx or 5xx has to be checked by hand.
+        if (!response.ok) {
+          throw new Error(`Could not load event ${eventId}, status ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        // An unknown id is not an error: the request succeeded, the list is just empty.
+        setEvent(data[0] ?? null);
+      } catch (error) {
+        console.error("Could not load event", error);
+        setHasError(true);
+      } finally {
+        setIsLoading(false);
+      }
     }
 
     getEvent();
@@ -44,19 +63,23 @@ export default function EventPage() {
     }
   }
 
-  if (!event) {
-    return null;
-  }
+  function renderEvent() {
+    if (isLoading) {
+      return <p role="status">Henter event ...</p>;
+    }
 
-  const date = new Date(event.date);
+    if (hasError) {
+      return <p role="alert">Vi kunne ikke hente eventet lige nu. Prøv at genindlæse siden.</p>;
+    }
 
-  return (
-    <>
-      <main className="event-page">
-        <Link className="back-link" to="/">
-          ← Alle events
-        </Link>
+    if (!event) {
+      return <p>Vi kan ikke finde det event. Brug linket ovenfor til at se alle events.</p>;
+    }
 
+    const date = new Date(event.date);
+
+    return (
+      <>
         <section className="event-detail">
           <img src={event.image} alt={event.title} />
           <div className="event-detail-content">
@@ -125,6 +148,18 @@ export default function EventPage() {
             </div>
           </form>
         </section>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <main className="event-page">
+        <Link className="back-link" to="/">
+          ← Alle events
+        </Link>
+
+        {renderEvent()}
       </main>
       <footer className="site-footer">
         <div className="footer-top">
