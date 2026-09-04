@@ -75,10 +75,43 @@ create table if not exists public.registrations (
   name text not null,
   email text not null,
   status text not null default 'Ny',
-  "eventTitle" text not null,
-  "eventDate" timestamptz not null,
-  "eventLocation" text
+  event_id bigint references public.events (id)
 );
+
+-- Databases created before event_id still copy title, date and location onto
+-- every registration. Link them to their event, then drop the copies.
+alter table public.registrations add column if not exists event_id bigint;
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'registrations_event_id_fkey') then
+    alter table public.registrations
+      add constraint registrations_event_id_fkey
+      foreign key (event_id) references public.events (id);
+  end if;
+end
+$$;
+
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'registrations'
+      and column_name = 'eventTitle'
+  ) then
+    update public.registrations r
+    set event_id = e.id
+    from public.events e
+    where e.title = r."eventTitle"
+      and r.event_id is null;
+  end if;
+end
+$$;
+
+alter table public.registrations drop column if exists "eventTitle";
+alter table public.registrations drop column if exists "eventDate";
+alter table public.registrations drop column if exists "eventLocation";
 
 grant select on table public.venues to anon;
 grant select on table public.events to anon;
@@ -138,17 +171,15 @@ on conflict (id) do update set
   price = excluded.price;
 
 insert into public.registrations
-  (id, name, email, status, "eventTitle", "eventDate", "eventLocation")
+  (id, name, email, status, event_id)
 values
-  (1, 'Alma Jensen', 'alma@example.com', 'Bekræftet', 'Lyd mellem husene', '2026-09-12T19:30:00+02:00', 'Godsbanen'),
-  (2, 'Noah Larsen', 'noah@example.com', 'Ny', 'Tryk din egen plakat', '2026-09-26T10:00:00+02:00', 'Institut for X')
+  (1, 'Alma Jensen', 'alma@example.com', 'Bekræftet', 1),
+  (2, 'Noah Larsen', 'noah@example.com', 'Ny', 3)
 on conflict (id) do update set
   name = excluded.name,
   email = excluded.email,
   status = excluded.status,
-  "eventTitle" = excluded."eventTitle",
-  "eventDate" = excluded."eventDate",
-  "eventLocation" = excluded."eventLocation";
+  event_id = excluded.event_id;
 
 select setval(pg_get_serial_sequence('public.venues', 'id'), coalesce((select max(id) from public.venues), 1));
 select setval(pg_get_serial_sequence('public.events', 'id'), coalesce((select max(id) from public.events), 1));

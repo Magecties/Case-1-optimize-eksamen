@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
+import { createRegistration } from "../services/registrations";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const headers = {
@@ -12,6 +13,8 @@ export default function EventPage() {
   const [event, setEvent] = useState(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formMessage, setFormMessage] = useState(null);
 
   useEffect(() => {
     async function getEvent() {
@@ -25,7 +28,20 @@ export default function EventPage() {
 
   async function handleSubmit(eventSubmit) {
     eventSubmit.preventDefault();
-    console.log({ name, email, event: event.title });
+    setIsSubmitting(true);
+    setFormMessage(null);
+
+    try {
+      await createRegistration({ name, email, event_id: event.id });
+      setName("");
+      setEmail("");
+      setFormMessage({ type: "success", text: "Tak! Din tilmelding er sendt til arrangøren." });
+    } catch (error) {
+      console.error("Could not create registration", error);
+      setFormMessage({ type: "error", text: "Din tilmelding kunne ikke sendes. Prøv igen om lidt." });
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   if (!event) {
@@ -100,7 +116,13 @@ export default function EventPage() {
               placeholder="dig@example.com"
               required
             />
-            <button type="submit">Tilmeld mig</button>
+            <button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Sender ..." : "Tilmeld mig"}
+            </button>
+            {/* The region stays mounted so screen readers announce text that appears in it later. */}
+            <div aria-live="polite">
+              {formMessage && <p className="form-message">{formMessage.text}</p>}
+            </div>
           </form>
         </section>
       </main>
