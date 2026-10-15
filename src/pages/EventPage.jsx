@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
+import { createRegistration } from "../services/registrations";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const headers = {
@@ -12,12 +13,33 @@ export default function EventPage() {
   const [event, setEvent] = useState(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formMessage, setFormMessage] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
     async function getEvent() {
-      const response = await fetch(`${SUPABASE_URL}/events?id=eq.${eventId}`, { headers });
-      const data = await response.json();
-      setEvent(data[0]);
+      try {
+        const response = await fetch(`${SUPABASE_URL}/events?select=*,venue:venues(*)&id=eq.${eventId}`, {
+          headers
+        });
+
+        // fetch only rejects on network errors, so a 4xx or 5xx has to be checked by hand.
+        if (!response.ok) {
+          throw new Error(`Could not load event ${eventId}, status ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        // An unknown id is not an error: the request succeeded, the list is just empty.
+        setEvent(data[0] ?? null);
+      } catch (error) {
+        console.error("Could not load event", error);
+        setHasError(true);
+      } finally {
+        setIsLoading(false);
+      }
     }
 
     getEvent();
@@ -25,24 +47,41 @@ export default function EventPage() {
 
   async function handleSubmit(eventSubmit) {
     eventSubmit.preventDefault();
-    console.log({ name, email, event: event.title });
+    setIsSubmitting(true);
+    setFormMessage(null);
+
+    try {
+      await createRegistration({ name, email, event_id: event.id });
+      setName("");
+      setEmail("");
+      setFormMessage({ type: "success", text: "Tak! Din tilmelding er sendt til arrangøren." });
+    } catch (error) {
+      console.error("Could not create registration", error);
+      setFormMessage({ type: "error", text: "Din tilmelding kunne ikke sendes. Prøv igen om lidt." });
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
-  if (!event) {
-    return null;
-  }
+  function renderEvent() {
+    if (isLoading) {
+      return <p role="status">Henter event ...</p>;
+    }
 
-  const date = new Date(event.date);
+    if (hasError) {
+      return <p role="alert">Vi kunne ikke hente eventet lige nu. Prøv at genindlæse siden.</p>;
+    }
 
-  return (
-    <>
-      <main className="event-page">
-        <Link className="back-link" to="/">
-          ← Alle events
-        </Link>
+    if (!event) {
+      return <p>Vi kan ikke finde det event. Brug linket ovenfor til at se alle events.</p>;
+    }
 
+    const date = new Date(event.date);
+
+    return (
+      <>
         <section className="event-detail">
-          <img src={event.image} alt="" />
+          <img src={event.image} alt={event.title} />
           <div className="event-detail-content">
             <p className="event-category">{event.category}</p>
             <h1>{event.title}</h1>
@@ -56,13 +95,13 @@ export default function EventPage() {
               <p>
                 <strong>Sted</strong>
                 <span>
-                  {event.venueName}
+                  {event.venue?.name}
                   <br />
-                  {event.venueAddress}, {event.venuePostalCode} {event.venueCity}
-                  {event.venueWebsite && (
+                  {event.venue?.address}, {event.venue?.postalCode} {event.venue?.city}
+                  {event.venue?.website && (
                     <>
                       <br />
-                      <a href={event.venueWebsite}>Besøg venue</a>
+                      <a href={event.venue.website}>Besøg venue</a>
                     </>
                   )}
                 </span>
@@ -84,19 +123,43 @@ export default function EventPage() {
           </div>
 
           <form onSubmit={handleSubmit}>
-            <label>
-              Navn
-              <input value={name} onChange={(inputEvent) => setName(inputEvent.target.value)} />
-            </label>
-            <span>E-mail</span>
+            <label htmlFor="signup-name">Navn</label>
             <input
+              id="signup-name"
+              value={name}
+              onChange={(inputEvent) => setName(inputEvent.target.value)}
+              required
+            />
+            <label htmlFor="signup-email">E-mail</label>
+            <input
+              id="signup-email"
+              type="email"
               value={email}
               onChange={(inputEvent) => setEmail(inputEvent.target.value)}
               placeholder="dig@example.com"
+              required
             />
-            <button type="submit">Tilmeld mig</button>
+            <button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Sender ..." : "Tilmeld mig"}
+            </button>
+            {/* The region stays mounted so screen readers announce text that appears in it later. */}
+            <div aria-live="polite">
+              {formMessage && <p className="form-message">{formMessage.text}</p>}
+            </div>
           </form>
         </section>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <main className="event-page">
+        <Link className="back-link" to="/">
+          ← Alle events
+        </Link>
+
+        {renderEvent()}
       </main>
       <footer className="site-footer">
         <div className="footer-top">
