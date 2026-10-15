@@ -9,6 +9,8 @@ on:
 jobs:
   ping:
     runs-on: ubuntu-latest
+    # VITE_SUPABASE_* ligger som variabler i dette environment, ikke på repo-niveau.
+    environment: github-pages-deployment
 
     steps:
       - name: Ping events table
